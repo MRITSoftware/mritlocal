@@ -22,7 +22,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev expect
+        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev expect
     
     - name: Install Buildozer and dependencies
       run: |
@@ -53,6 +53,12 @@ jobs:
         # Limpa builds anteriores para evitar problemas
         echo "Limpando builds anteriores..."
         buildozer android clean 2>&1 || true
+        
+        # Configura variáveis de ambiente para o build
+        export AUTOCONF_VERSION=$(autoconf --version | head -1 | awk '{print $NF}')
+        export AUTOMAKE_VERSION=$(automake --version | head -1 | awk '{print $NF}')
+        echo "Autoconf version: $AUTOCONF_VERSION"
+        echo "Automake version: $AUTOMAKE_VERSION"
         
         # Executa buildozer diretamente (aceita licenças via buildozer.spec)
         # Usa yes para aceitar qualquer prompt que aparecer
