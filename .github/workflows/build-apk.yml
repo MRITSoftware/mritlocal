@@ -30,6 +30,9 @@ jobs:
     
     - name: Build APK
       timeout-minutes: 120
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT || '/usr/local/lib/android/sdk' }}
       run: |
         # Prepara diretórios para licenças
         mkdir -p ~/.android
@@ -38,6 +41,14 @@ jobs:
         echo "Iniciando build do APK..."
         echo "Python version: $(python --version)"
         echo "Buildozer version: $(buildozer --version || echo 'não disponível')"
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        
+        # Aceita licenças do Android SDK se o sdkmanager estiver disponível
+        if command -v sdkmanager &> /dev/null; then
+          echo "Aceitando licenças do Android SDK..."
+          yes | sdkmanager --licenses || true
+        fi
         
         # Executa buildozer diretamente (aceita licenças via buildozer.spec)
         # Usa yes para aceitar qualquer prompt que aparecer
@@ -58,11 +69,15 @@ jobs:
             BUILD_EXIT_CODE=0
           else
             echo "❌ Nenhum APK encontrado. Build realmente falhou."
-            echo "=== Últimas 300 linhas do log ==="
-            tail -300 build.log
+            echo "=== Procurando por erros no log ==="
+            grep -i "error\|fail\|exception" build.log | tail -50 || echo "Nenhum erro específico encontrado"
+            echo "=== Últimas 500 linhas do log ==="
+            tail -500 build.log
             echo "=== Verificando estrutura de diretórios ==="
             find .buildozer -type f -name "*.apk" 2>/dev/null || echo "Nenhum APK em .buildozer"
             find bin -type f -name "*.apk" 2>/dev/null || echo "Nenhum APK em bin"
+            echo "=== Verificando se SDK foi baixado ==="
+            ls -la ~/.buildozer/android/platform/ 2>/dev/null || echo "Diretório platform não encontrado"
             exit 1
           fi
         fi
