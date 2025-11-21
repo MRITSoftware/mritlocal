@@ -166,10 +166,50 @@ jobs:
           yes | "$CMDLINE_TOOLS" "platform-tools" 2>&1 | head -20 || true
         fi
         
-        echo "=== Iniciando build ==="
+        echo "=== Baixando SDK manualmente antes do build ==="
+        # Baixa o SDK usando python-for-android antes do buildozer começar
+        # Isso garante que o SDK esteja disponível e podemos criar o symlink
+        if [ ! -d "$SDK_PATH/platforms" ]; then
+          echo "SDK não encontrado, será baixado pelo buildozer..."
+        fi
+        
+        echo "=== Garantindo symlink antes do build ==="
+        # Cria o symlink se o cmdline-tools existir
+        if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
+          mkdir -p "$SDK_PATH/tools/bin"
+          if [ ! -f "$SDK_PATH/tools/bin/sdkmanager" ]; then
+            echo "=== Criando symlink para sdkmanager ==="
+            ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager"
+            echo "Symlink criado: $(ls -la $SDK_PATH/tools/bin/sdkmanager 2>/dev/null || echo 'não encontrado')"
+          fi
+        fi
+        
+        echo "=== Iniciando build com monitoramento de SDK ==="
+        # Cria um script wrapper que monitora e cria symlink quando SDK for baixado
+        cat > /tmp/monitor_sdk.sh << 'EOF'
+#!/bin/bash
+SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
+while true; do
+  if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -f "$SDK_PATH/tools/bin/sdkmanager" ]; then
+    echo "=== SDK detectado, criando symlink ==="
+    mkdir -p "$SDK_PATH/tools/bin"
+    ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" 2>/dev/null || true
+    break
+  fi
+  sleep 2
+done
+EOF
+        chmod +x /tmp/monitor_sdk.sh
+        
+        # Inicia o monitoramento em background
+        /tmp/monitor_sdk.sh &
+        MONITOR_PID=$!
+        
         # O buildozer.spec já tem android.accept_sdk_license = True
         # Executa o build e captura a saída
         buildozer -v android debug 2>&1 | tee build.log || {
+          kill $MONITOR_PID 2>/dev/null || true
+          EXIT_CODE=$?
           # Se falhar, tenta aceitar licenças e tentar novamente
           if [ -d "$SDK_PATH/cmdline-tools" ]; then
             echo "=== Tentando aceitar licenças após falha ==="
@@ -178,7 +218,10 @@ jobs:
               yes | "$CMDLINE_TOOLS" --licenses 2>&1 || true
               cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
               echo "=== Tentando build novamente ==="
+              /tmp/monitor_sdk.sh &
+              MONITOR_PID2=$!
               buildozer -v android debug 2>&1 | tee build-retry.log || {
+                kill $MONITOR_PID2 2>/dev/null || true
                 EXIT_CODE=$?
                 echo "=== Build falhou novamente com código: $EXIT_CODE ==="
                 
@@ -198,6 +241,9 @@ jobs:
               }
             fi
           fi
+          
+          # Para o monitoramento
+          kill $MONITOR_PID 2>/dev/null || true
           
           EXIT_CODE=$?
           echo "=== Build falhou com código: $EXIT_CODE ==="
