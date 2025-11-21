@@ -175,7 +175,21 @@ jobs:
         # Baixa o SDK usando python-for-android antes do buildozer começar
         # Isso garante que o SDK esteja disponível e podemos criar o symlink
         if [ ! -d "$SDK_PATH/platforms" ]; then
-          echo "SDK não encontrado, será baixado pelo buildozer..."
+          echo "SDK não encontrado, baixando via python-for-android..."
+          # Clona python-for-android se necessário
+          P4A_DIR="$HOME/.buildozer/android/platform/python-for-android"
+          if [ ! -d "$P4A_DIR" ]; then
+            mkdir -p "$HOME/.buildozer/android/platform"
+            cd "$HOME/.buildozer/android/platform"
+            git clone -b master --single-branch https://github.com/kivy/python-for-android.git || true
+            cd - || true
+          fi
+          
+          # Tenta baixar o SDK usando python-for-android
+          if [ -d "$P4A_DIR" ] && [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "Baixando Android SDK platform..."
+            yes | "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "platforms;android-31" "build-tools;33.0.0" 2>&1 | head -30 || true
+          fi
         fi
         
         echo "=== Garantindo symlink antes do build ==="
@@ -191,6 +205,7 @@ jobs:
         
         echo "=== Iniciando build com monitoramento de SDK ==="
         # Cria um script wrapper que monitora e cria symlink quando SDK for baixado
+        # Também intercepta o buildozer para criar symlink imediatamente
         printf '#!/bin/bash\n' > /tmp/monitor_sdk.sh
         printf 'SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"\n' >> /tmp/monitor_sdk.sh
         printf 'while true; do\n' >> /tmp/monitor_sdk.sh
@@ -198,21 +213,43 @@ jobs:
         printf '    echo "=== SDK detectado, criando symlink ==="\n' >> /tmp/monitor_sdk.sh
         printf '    mkdir -p "$SDK_PATH/tools/bin"\n' >> /tmp/monitor_sdk.sh
         printf '    ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" 2>/dev/null || true\n' >> /tmp/monitor_sdk.sh
-        printf '    break\n' >> /tmp/monitor_sdk.sh
+        printf '    echo "Symlink criado: $(ls -la $SDK_PATH/tools/bin/sdkmanager 2>/dev/null || echo falhou)"\n' >> /tmp/monitor_sdk.sh
         printf '  fi\n' >> /tmp/monitor_sdk.sh
-        printf '  sleep 2\n' >> /tmp/monitor_sdk.sh
+        printf '  sleep 1\n' >> /tmp/monitor_sdk.sh
         printf 'done\n' >> /tmp/monitor_sdk.sh
         chmod +x /tmp/monitor_sdk.sh
         
-        # Inicia o monitoramento em background
+        # Inicia o monitoramento em background (não para mais, continua monitorando)
         /tmp/monitor_sdk.sh &
         MONITOR_PID=$!
         
+        # Função para criar symlink durante o build
+        create_symlink_if_needed() {
+          if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -f "$SDK_PATH/tools/bin/sdkmanager" ]; then
+            echo "=== Criando symlink durante build ==="
+            mkdir -p "$SDK_PATH/tools/bin"
+            ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" 2>/dev/null || true
+          fi
+        }
+        
         # O buildozer.spec já tem android.accept_sdk_license = True
-        # Executa o build e captura a saída
-        buildozer -v android debug 2>&1 | tee build.log || {
+        # Executa o build e captura a saída, criando symlink quando detectar mensagens do SDK
+        buildozer -v android debug 2>&1 | tee build.log | while IFS= read -r line; do
+          echo "$line"
+          # Quando detectar que o SDK foi encontrado, cria o symlink
+          if echo "$line" | grep -q "Android SDK found at"; then
+            sleep 3
+            create_symlink_if_needed
+          fi
+          # Também cria quando detectar tentativa de usar sdkmanager
+          if echo "$line" | grep -q "sdkmanager path"; then
+            create_symlink_if_needed
+          fi
+        done
+        EXIT_CODE=${PIPESTATUS[0]}
+        
+        if [ $EXIT_CODE -ne 0 ]; then
           kill $MONITOR_PID 2>/dev/null || true
-          EXIT_CODE=$?
           # Se falhar, tenta aceitar licenças e tentar novamente
           if [ -d "$SDK_PATH/cmdline-tools" ]; then
             echo "=== Tentando aceitar licenças após falha ==="
@@ -245,10 +282,6 @@ jobs:
             fi
           fi
           
-          # Para o monitoramento
-          kill $MONITOR_PID 2>/dev/null || true
-          
-          EXIT_CODE=$?
           echo "=== Build falhou com código: $EXIT_CODE ==="
           
           # Verifica se APK foi gerado mesmo assim
@@ -256,6 +289,7 @@ jobs:
           if [ -n "$APK_FOUND" ]; then
             echo "✅ APK encontrado apesar do erro: $APK_FOUND"
             echo "APK_PATH=$APK_FOUND" >> $GITHUB_ENV
+            kill $MONITOR_PID 2>/dev/null || true
             exit 0
           fi
           
@@ -263,8 +297,12 @@ jobs:
           grep -i "error\|fail\|exception" build.log | tail -50 || true
           echo "=== Últimas 200 linhas ==="
           tail -200 build.log
+          kill $MONITOR_PID 2>/dev/null || true
           exit $EXIT_CODE
-        }
+        fi
+        
+        # Para o monitoramento se o build foi bem-sucedido
+        kill $MONITOR_PID 2>/dev/null || true
         
         echo "=== Build concluído ==="
         APK_PATH=$(find .buildozer -name "*.apk" 2>/dev/null | head -1)
