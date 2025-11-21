@@ -29,7 +29,7 @@ jobs:
         pip install buildozer cython
     
     - name: Build APK
-      timeout-minutes: 120
+      timeout-minutes: 180
       env:
         ANDROID_HOME: ${{ env.ANDROID_HOME || '/usr/local/lib/android/sdk' }}
         ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT || '/usr/local/lib/android/sdk' }}
@@ -49,10 +49,6 @@ jobs:
           echo "Aceitando licenças do Android SDK..."
           yes | sdkmanager --licenses || true
         fi
-        
-        # Limpa builds anteriores para evitar problemas
-        echo "Limpando builds anteriores..."
-        buildozer android clean 2>&1 || true
         
         # Configura variáveis de ambiente para o build
         export AUTOCONF_VERSION=$(autoconf --version | head -1 | awk '{print $NF}')
