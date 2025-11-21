@@ -40,18 +40,16 @@ jobs:
         echo "Buildozer version: $(buildozer --version || echo 'não disponível')"
         
         # Cria script expect para aceitar licenças automaticamente
-        cat > accept_licenses.exp << 'EXPECT_EOF'
-        #!/usr/bin/expect -f
-        set timeout 300
-        spawn buildozer android debug
-        expect {
-            "*license*" { send "y\r"; exp_continue }
-            "*License*" { send "y\r"; exp_continue }
-            "*accept*" { send "y\r"; exp_continue }
-            "*Accept*" { send "y\r"; exp_continue }
-            eof
-        }
-        EXPECT_EOF
+        printf '#!/usr/bin/expect -f\n' > accept_licenses.exp
+        printf 'set timeout 300\n' >> accept_licenses.exp
+        printf 'spawn buildozer android debug\n' >> accept_licenses.exp
+        printf 'expect {\n' >> accept_licenses.exp
+        printf '    "*license*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
+        printf '    "*License*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
+        printf '    "*accept*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
+        printf '    "*Accept*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
+        printf '    eof\n' >> accept_licenses.exp
+        printf '}\n' >> accept_licenses.exp
         chmod +x accept_licenses.exp
         
         # Executa buildozer com expect para aceitar licenças
