@@ -133,12 +133,37 @@ jobs:
           cd - > /dev/null
         fi
         
+        # Cria symlink para o caminho antigo que o buildozer espera
+        if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -d "$SDK_PATH/tools" ]; then
+          echo "=== Criando symlink para compatibilidade com buildozer ==="
+          mkdir -p "$SDK_PATH/tools/bin"
+          ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" || true
+          # Também cria outros binários necessários se existirem
+          for tool in avdmanager; do
+            if [ -f "$SDK_PATH/cmdline-tools/latest/bin/$tool" ]; then
+              ln -sf "$SDK_PATH/cmdline-tools/latest/bin/$tool" "$SDK_PATH/tools/bin/$tool" || true
+            fi
+          done
+        fi
+        
         echo "=== Aceitando licenças do SDK ==="
         # Tenta aceitar licenças antes do build usando sdkmanager se disponível
+        # Tenta usar o caminho novo primeiro, depois o antigo (symlink)
         CMDLINE_TOOLS="$SDK_PATH/cmdline-tools/latest/bin/sdkmanager"
+        OLD_SDKMANAGER="$SDK_PATH/tools/bin/sdkmanager"
+        
         if [ -f "$CMDLINE_TOOLS" ]; then
-          echo "Aceitando licenças via sdkmanager..."
+          echo "Aceitando licenças via sdkmanager (cmdline-tools)..."
           yes | "$CMDLINE_TOOLS" --licenses 2>&1 | head -50 || true
+        elif [ -f "$OLD_SDKMANAGER" ]; then
+          echo "Aceitando licenças via sdkmanager (tools)..."
+          yes | "$OLD_SDKMANAGER" --licenses 2>&1 | head -50 || true
+        fi
+        
+        # Instala platform-tools se necessário
+        if [ -f "$CMDLINE_TOOLS" ]; then
+          echo "=== Instalando Android SDK platform-tools ==="
+          yes | "$CMDLINE_TOOLS" "platform-tools" 2>&1 | head -20 || true
         fi
         
         echo "=== Iniciando build ==="
