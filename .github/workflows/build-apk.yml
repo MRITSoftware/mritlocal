@@ -191,19 +191,17 @@ jobs:
         
         echo "=== Iniciando build com monitoramento de SDK ==="
         # Cria um script wrapper que monitora e cria symlink quando SDK for baixado
-        cat > /tmp/monitor_sdk.sh << 'EOF'
-#!/bin/bash
-SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
-while true; do
-  if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -f "$SDK_PATH/tools/bin/sdkmanager" ]; then
-    echo "=== SDK detectado, criando symlink ==="
-    mkdir -p "$SDK_PATH/tools/bin"
-    ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" 2>/dev/null || true
-    break
-  fi
-  sleep 2
-done
-EOF
+        printf '#!/bin/bash\n' > /tmp/monitor_sdk.sh
+        printf 'SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"\n' >> /tmp/monitor_sdk.sh
+        printf 'while true; do\n' >> /tmp/monitor_sdk.sh
+        printf '  if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -f "$SDK_PATH/tools/bin/sdkmanager" ]; then\n' >> /tmp/monitor_sdk.sh
+        printf '    echo "=== SDK detectado, criando symlink ==="\n' >> /tmp/monitor_sdk.sh
+        printf '    mkdir -p "$SDK_PATH/tools/bin"\n' >> /tmp/monitor_sdk.sh
+        printf '    ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" 2>/dev/null || true\n' >> /tmp/monitor_sdk.sh
+        printf '    break\n' >> /tmp/monitor_sdk.sh
+        printf '  fi\n' >> /tmp/monitor_sdk.sh
+        printf '  sleep 2\n' >> /tmp/monitor_sdk.sh
+        printf 'done\n' >> /tmp/monitor_sdk.sh
         chmod +x /tmp/monitor_sdk.sh
         
         # Inicia o monitoramento em background
