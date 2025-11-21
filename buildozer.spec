@@ -22,4 +22,6 @@ p4a.branch = master
 android.allow_backup = True
 android.archs = arm64-v8a
 android.accept_sdk_license = True
+android.sdk = 31
+android.ndk_api = 21
 

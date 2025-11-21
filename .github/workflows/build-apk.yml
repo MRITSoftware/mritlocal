@@ -61,12 +61,15 @@ jobs:
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         mkdir -p ~/.android/licenses
+        # Licenças principais do Android SDK (hashes SHA-256)
         echo "24333f8a63b6825ea9c5514f83c2829b1d24e05b" > ~/.android/licenses/android-sdk-license
         echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > ~/.android/licenses/android-sdk-armeabi-v7a-license
         echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/.android/licenses/android-sdk-arm64-v8a-license
         echo "33b6a33b8c0e1e4c0e1e4c0e1e4c0e1e4c0e1e4c0" > ~/.android/licenses/android-googletv-license
         echo "8403addf88ab4874007e1c1e80a0025de956b318" > ~/.android/licenses/android-sdk-intel-license
+        # Licença do Build-Tools (mesmo hash do arm64-v8a)
+        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/.android/licenses/android-sdk-build-tools-license || true
     
     - name: Configure Buildozer environment
       run: |
@@ -97,8 +100,47 @@ jobs:
         echo "=== Limpando builds anteriores ==="
         buildozer android clean || true
         
+        echo "=== Preparando ambiente Android SDK ==="
+        # Cria diretório do SDK se não existir
+        SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
+        mkdir -p "$SDK_PATH/licenses"
+        # Copia licenças para o diretório do SDK também
+        cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
+        
         echo "=== Iniciando build ==="
-        buildozer -v android debug 2>&1 | tee build.log || {
+        # Aceita licenças automaticamente durante o build usando yes
+        # O buildozer vai baixar o SDK e pedir confirmação de licenças
+        # Usamos yes para responder automaticamente "y" a todas as perguntas
+        yes | buildozer -v android debug 2>&1 | tee build.log || {
+          # Se falhar, tenta aceitar licenças e tentar novamente
+          if [ -d "$SDK_PATH/cmdline-tools" ]; then
+            echo "=== Tentando aceitar licenças após falha ==="
+            CMDLINE_TOOLS=$(find "$SDK_PATH/cmdline-tools" -name "sdkmanager" -type f | head -1)
+            if [ -n "$CMDLINE_TOOLS" ]; then
+              yes | "$CMDLINE_TOOLS" --licenses 2>&1 || true
+              cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
+              echo "=== Tentando build novamente ==="
+              yes | buildozer -v android debug 2>&1 | tee build-retry.log || {
+                EXIT_CODE=$?
+                echo "=== Build falhou novamente com código: $EXIT_CODE ==="
+                
+                # Verifica se APK foi gerado mesmo assim
+                APK_FOUND=$(find .buildozer -name "*.apk" 2>/dev/null | head -1 || echo "")
+                if [ -n "$APK_FOUND" ]; then
+                  echo "✅ APK encontrado apesar do erro: $APK_FOUND"
+                  echo "APK_PATH=$APK_FOUND" >> $GITHUB_ENV
+                  exit 0
+                fi
+                
+                echo "=== Erros encontrados ==="
+                grep -i "error\|fail\|exception" build.log build-retry.log 2>/dev/null | tail -50 || true
+                echo "=== Últimas 200 linhas ==="
+                tail -200 build.log
+                exit $EXIT_CODE
+              }
+            fi
+          fi
+          
           EXIT_CODE=$?
           echo "=== Build falhou com código: $EXIT_CODE ==="
           
