@@ -28,13 +28,36 @@ jobs:
       run: |
         pip install buildozer cython
     
-    - name: Build APK
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Accept Android SDK licenses
       run: |
-        # Cria diretório para licenças aceitas
+        yes | sdkmanager --licenses || true
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
-        # Aceita licenças automaticamente usando yes
-        yes | buildozer android debug || buildozer android debug
+    
+    - name: Build APK
+      timeout-minutes: 60
+      env:
+        ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      run: |
+        echo "Iniciando build do APK..."
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        
+        # Executa buildozer com logging detalhado
+        buildozer android debug 2>&1 | tee build.log || {
+          echo "=== Build falhou ==="
+          echo "Últimas 100 linhas do log:"
+          tail -100 build.log
+          echo "=== Fim do log ==="
+          exit 1
+        }
+        
+        echo "=== Build concluído com sucesso ==="
+        ls -la .buildozer/android/platform/build/dists/mritgateway/bin/ || true
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
