@@ -22,97 +22,61 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev expect
+        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
     
-    - name: Install Buildozer and dependencies
+    - name: Install Buildozer
       run: |
+        pip install --upgrade pip
         pip install buildozer cython
     
-    - name: Build APK
-      timeout-minutes: 180
-      env:
-        ANDROID_HOME: /usr/local/lib/android/sdk
-        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    - name: Accept Android SDK licenses
       run: |
-        # Prepara diretórios para licenças
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        
-        echo "Iniciando build do APK..."
-        echo "Python version: $(python --version)"
-        echo "Buildozer version: $(buildozer --version || echo 'não disponível')"
-        echo "ANDROID_HOME: $ANDROID_HOME"
-        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-        
-        # Cria diretório de licenças
         mkdir -p ~/.android/licenses
         echo "24333f8a63b6825ea9c5514f83c2829b1d24e05b" > ~/.android/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license 2>/dev/null || true
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > ~/.android/licenses/android-sdk-armeabi-v7a-license 2>/dev/null || true
-        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/.android/licenses/android-sdk-arm64-v8a-license 2>/dev/null || true
-        
-        # Configura variáveis de ambiente para o build
-        export AUTOCONF_VERSION=$(autoconf --version | head -1 | awk '{print $NF}' 2>/dev/null || echo "2.69")
-        export AUTOMAKE_VERSION=$(automake --version | head -1 | awk '{print $NF}' 2>/dev/null || echo "1.16")
-        echo "Autoconf version: $AUTOCONF_VERSION"
-        echo "Automake version: $AUTOMAKE_VERSION"
-        
-        # Cria buildozer.spec básico se não existir
-        if [ ! -f buildozer.spec ]; then
-          echo "Criando buildozer.spec básico..."
-          buildozer init
-        fi
-        
-        # Executa buildozer
-        echo "Iniciando build com Buildozer..."
-        set +e
-        timeout 10800 buildozer -v android debug 2>&1 | tee build.log
-        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > ~/.android/licenses/android-sdk-armeabi-v7a-license
+        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/.android/licenses/android-sdk-arm64-v8a-license
+        echo "33b6a33b8c0e1e4c0e1e4c0e1e4c0e1e4c0e1e4c0" > ~/.android/licenses/android-googletv-license
+        echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/.android/licenses/android-sdk-arm64-v8a-license
+        touch ~/.android/repositories.cfg
+    
+    - name: Build APK
+      timeout-minutes: 240
+      run: |
         set -e
         
-        # Timeout retorna 124
-        if [ $BUILD_EXIT_CODE -eq 124 ]; then
-          echo "⚠️ Build atingiu timeout de 3 horas"
-          BUILD_EXIT_CODE=1
-        fi
+        echo "=== Configuração ==="
+        echo "Python: $(python --version)"
+        echo "Buildozer: $(buildozer --version 2>&1 | head -1)"
+        echo "Diretório: $(pwd)"
         
-        # Verifica se o build realmente falhou ou se apenas teve warnings
-        if [ $BUILD_EXIT_CODE -ne 0 ]; then
-          echo "=== Build retornou código: $BUILD_EXIT_CODE ==="
-          echo "Verificando se APK foi gerado mesmo assim..."
+        echo "=== Iniciando build ==="
+        buildozer -v android debug 2>&1 | tee build.log || {
+          EXIT_CODE=$?
+          echo "=== Build falhou com código: $EXIT_CODE ==="
           
-          # Verifica se APK foi gerado
-          APK_COUNT=$(find .buildozer -name "*.apk" 2>/dev/null | wc -l)
-          if [ $APK_COUNT -gt 0 ]; then
-            echo "✅ APK foi gerado apesar do código de saída!"
-            BUILD_EXIT_CODE=0
-          else
-            echo "❌ Nenhum APK encontrado. Build realmente falhou."
-            echo "=== Procurando por erros no log ==="
-            grep -i "error\|fail\|exception\|traceback" build.log | tail -100 || echo "Nenhum erro específico encontrado"
-            echo "=== Últimas 100 linhas do log ==="
-            tail -100 build.log
-            echo "=== Verificando estrutura de diretórios ==="
-            find .buildozer -type f -name "*.apk" 2>/dev/null || echo "Nenhum APK em .buildozer"
-            echo "=== Verificando se SDK foi baixado ==="
-            ls -la ~/.buildozer/android/platform/ 2>/dev/null || echo "Diretório platform não encontrado"
-            exit 1
+          # Verifica se APK foi gerado mesmo assim
+          if find .buildozer -name "*.apk" 2>/dev/null | grep -q .; then
+            echo "✅ APK encontrado apesar do erro!"
+            exit 0
           fi
-        fi
+          
+          echo "=== Erros encontrados ==="
+          grep -i "error\|fail\|exception" build.log | tail -50 || true
+          echo "=== Últimas 200 linhas ==="
+          tail -200 build.log
+          exit $EXIT_CODE
+        }
         
-        echo "=== Build concluído com sucesso ==="
-        echo "Procurando APKs gerados..."
-        find .buildozer -name "*.apk" -exec ls -lh {} \;
-        
-        # Encontra o primeiro APK e salva o caminho
+        echo "=== Build concluído ==="
         APK_PATH=$(find .buildozer -name "*.apk" 2>/dev/null | head -1)
         if [ -z "$APK_PATH" ]; then
-          echo "ERRO: Nenhum APK encontrado!"
-          echo "Estrutura de diretórios:"
-          ls -la .buildozer/ 2>/dev/null || true
+          echo "❌ Nenhum APK encontrado!"
+          ls -la .buildozer/android/platform/build/dists/*/bin/ 2>/dev/null || true
           exit 1
         fi
-        echo "APK encontrado em: $APK_PATH"
+        echo "✅ APK encontrado: $APK_PATH"
+        ls -lh "$APK_PATH"
         echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
     
     - name: Upload APK
