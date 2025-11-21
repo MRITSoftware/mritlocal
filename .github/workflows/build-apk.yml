@@ -50,6 +50,10 @@ jobs:
           yes | sdkmanager --licenses || true
         fi
         
+        # Limpa builds anteriores para evitar problemas
+        echo "Limpando builds anteriores..."
+        buildozer android clean 2>&1 || true
+        
         # Executa buildozer diretamente (aceita licenças via buildozer.spec)
         # Usa yes para aceitar qualquer prompt que aparecer
         set +e
@@ -70,14 +74,16 @@ jobs:
           else
             echo "❌ Nenhum APK encontrado. Build realmente falhou."
             echo "=== Procurando por erros no log ==="
-            grep -i "error\|fail\|exception" build.log | tail -50 || echo "Nenhum erro específico encontrado"
-            echo "=== Últimas 500 linhas do log ==="
-            tail -500 build.log
+            grep -i "error\|fail\|exception\|traceback" build.log | tail -100 || echo "Nenhum erro específico encontrado"
+            echo "=== Últimas 1000 linhas do log ==="
+            tail -1000 build.log
             echo "=== Verificando estrutura de diretórios ==="
             find .buildozer -type f -name "*.apk" 2>/dev/null || echo "Nenhum APK em .buildozer"
             find bin -type f -name "*.apk" 2>/dev/null || echo "Nenhum APK em bin"
             echo "=== Verificando se SDK foi baixado ==="
             ls -la ~/.buildozer/android/platform/ 2>/dev/null || echo "Diretório platform não encontrado"
+            echo "=== Verificando logs do buildozer ==="
+            find .buildozer -name "*.log" -exec tail -50 {} \; 2>/dev/null || echo "Nenhum log adicional encontrado"
             exit 1
           fi
         fi

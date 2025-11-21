@@ -20,6 +20,6 @@ api = 31
 minapi = 21
 p4a.branch = master
 android.allow_backup = True
-android.archs = arm64-v8a,armeabi-v7a
+android.archs = arm64-v8a
 android.accept_sdk_license = True
 
