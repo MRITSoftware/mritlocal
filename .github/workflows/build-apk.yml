@@ -88,7 +88,8 @@ jobs:
         USE_CCACHE: 1
         CCACHE_DIR: ${{ runner.temp }}/ccache
       run: |
-        set -e
+        # Não usa set -e para permitir tratamento de erros manual
+        set +e
         
         echo "=== Configuração ==="
         echo "Python: $(python --version)"
@@ -114,7 +115,8 @@ jobs:
         if [ ! -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
           echo "=== Instalando Android SDK cmdline-tools ==="
           mkdir -p "$SDK_PATH/cmdline-tools"
-          cd "$SDK_PATH"
+          ORIGINAL_DIR=$(pwd)
+          cd "$SDK_PATH" || exit 1
           # Tenta baixar a versão mais recente do cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip || \
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
@@ -130,7 +132,7 @@ jobs:
             fi
             rm -rf cmdline-tools-temp
           fi
-          cd - > /dev/null
+          cd "$ORIGINAL_DIR" || true
         fi
         
         # Cria symlink para o caminho antigo que o buildozer espera
