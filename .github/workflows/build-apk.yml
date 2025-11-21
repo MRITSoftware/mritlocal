@@ -116,23 +116,26 @@ jobs:
           echo "=== Instalando Android SDK cmdline-tools ==="
           mkdir -p "$SDK_PATH/cmdline-tools"
           ORIGINAL_DIR=$(pwd)
-          cd "$SDK_PATH" || exit 1
-          # Tenta baixar a versão mais recente do cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip || \
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
-          if [ -f cmdline-tools.zip ]; then
-            unzip -q cmdline-tools.zip -d cmdline-tools-temp
-            rm cmdline-tools.zip
-            # Move para a estrutura esperada (cmdline-tools/latest/)
-            if [ -d cmdline-tools-temp/cmdline-tools ]; then
-              mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/ 2>/dev/null || true
-            else
-              mkdir -p cmdline-tools/latest
-              mv cmdline-tools-temp/* cmdline-tools/latest/ 2>/dev/null || true
+          if cd "$SDK_PATH"; then
+            # Tenta baixar a versão mais recente do cmdline-tools
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip || \
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
+            if [ -f cmdline-tools.zip ]; then
+              unzip -q cmdline-tools.zip -d cmdline-tools-temp
+              rm cmdline-tools.zip
+              # Move para a estrutura esperada (cmdline-tools/latest/)
+              if [ -d cmdline-tools-temp/cmdline-tools ]; then
+                mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/ 2>/dev/null || true
+              else
+                mkdir -p cmdline-tools/latest
+                mv cmdline-tools-temp/* cmdline-tools/latest/ 2>/dev/null || true
+              fi
+              rm -rf cmdline-tools-temp
             fi
-            rm -rf cmdline-tools-temp
+            cd "$ORIGINAL_DIR" || true
+          else
+            echo "Erro: não foi possível acessar $SDK_PATH, pulando instalação do cmdline-tools"
           fi
-          cd "$ORIGINAL_DIR" || true
         fi
         
         # Cria symlink para o caminho antigo que o buildozer espera
