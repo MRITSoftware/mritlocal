@@ -139,16 +139,36 @@ jobs:
         fi
         
         # Cria symlink para o caminho antigo que o buildozer espera
-        if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ] && [ ! -d "$SDK_PATH/tools" ]; then
+        # IMPORTANTE: Deve ser criado ANTES do buildozer começar
+        if [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
           echo "=== Criando symlink para compatibilidade com buildozer ==="
           mkdir -p "$SDK_PATH/tools/bin"
-          ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager" || true
+          # Remove symlink antigo se existir
+          rm -f "$SDK_PATH/tools/bin/sdkmanager"
+          # Cria novo symlink
+          ln -sf "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "$SDK_PATH/tools/bin/sdkmanager"
+          echo "Symlink criado: $(ls -la $SDK_PATH/tools/bin/sdkmanager 2>/dev/null || echo 'FALHOU')"
+          
           # Também cria outros binários necessários se existirem
           for tool in avdmanager; do
             if [ -f "$SDK_PATH/cmdline-tools/latest/bin/$tool" ]; then
-              ln -sf "$SDK_PATH/cmdline-tools/latest/bin/$tool" "$SDK_PATH/tools/bin/$tool" || true
+              rm -f "$SDK_PATH/tools/bin/$tool"
+              ln -sf "$SDK_PATH/cmdline-tools/latest/bin/$tool" "$SDK_PATH/tools/bin/$tool"
             fi
           done
+          
+          # Verifica se o symlink foi criado corretamente
+          if [ -f "$SDK_PATH/tools/bin/sdkmanager" ] || [ -L "$SDK_PATH/tools/bin/sdkmanager" ]; then
+            echo "✅ Symlink do sdkmanager criado com sucesso"
+            "$SDK_PATH/tools/bin/sdkmanager" --version 2>&1 | head -1 || true
+          else
+            echo "❌ ERRO: Symlink do sdkmanager NÃO foi criado!"
+            ls -la "$SDK_PATH/tools/bin/" 2>/dev/null || echo "Diretório não existe"
+          fi
+        else
+          echo "⚠️  cmdline-tools não encontrado em $SDK_PATH/cmdline-tools/latest/bin/sdkmanager"
+          echo "Listando conteúdo de $SDK_PATH:"
+          ls -la "$SDK_PATH" 2>/dev/null || echo "SDK_PATH não existe"
         fi
         
         echo "=== Aceitando licenças do SDK ==="
@@ -159,7 +179,7 @@ jobs:
         
         if [ -f "$CMDLINE_TOOLS" ]; then
           echo "Aceitando licenças via sdkmanager (cmdline-tools)..."
-          yes | "$CMDLINE_TOOLS" --licenses 2>&1 | head -50 || true
+          yes | "$CMDLINE_TOOLS" --sdk_root="$SDK_PATH" --licenses 2>&1 | head -50 || true
         elif [ -f "$OLD_SDKMANAGER" ]; then
           echo "Aceitando licenças via sdkmanager (tools)..."
           yes | "$OLD_SDKMANAGER" --licenses 2>&1 | head -50 || true
@@ -168,7 +188,7 @@ jobs:
         # Instala platform-tools se necessário
         if [ -f "$CMDLINE_TOOLS" ]; then
           echo "=== Instalando Android SDK platform-tools ==="
-          yes | "$CMDLINE_TOOLS" "platform-tools" 2>&1 | head -20 || true
+          yes | "$CMDLINE_TOOLS" --sdk_root="$SDK_PATH" "platform-tools" 2>&1 | head -20 || true
         fi
         
         echo "=== Baixando SDK manualmente antes do build ==="
@@ -188,7 +208,7 @@ jobs:
           # Tenta baixar o SDK usando python-for-android
           if [ -d "$P4A_DIR" ] && [ -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
             echo "Baixando Android SDK platform..."
-            yes | "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" "platforms;android-31" "build-tools;33.0.0" 2>&1 | head -30 || true
+            yes | "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_PATH" "platforms;android-31" "build-tools;33.0.0" 2>&1 | head -30 || true
           fi
         fi
         
@@ -255,14 +275,14 @@ jobs:
             echo "=== Tentando aceitar licenças após falha ==="
             CMDLINE_TOOLS=$(find "$SDK_PATH/cmdline-tools" -name "sdkmanager" -type f | head -1)
             if [ -n "$CMDLINE_TOOLS" ]; then
-              yes | "$CMDLINE_TOOLS" --licenses 2>&1 || true
+              yes | "$CMDLINE_TOOLS" --sdk_root="$SDK_PATH" --licenses 2>&1 || true
               cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
               echo "=== Tentando build novamente ==="
               /tmp/monitor_sdk.sh &
               MONITOR_PID2=$!
               buildozer -v android debug 2>&1 | tee build-retry.log || {
                 kill $MONITOR_PID2 2>/dev/null || true
-                EXIT_CODE=$?
+          EXIT_CODE=$?
                 echo "=== Build falhou novamente com código: $EXIT_CODE ==="
                 
                 # Verifica se APK foi gerado mesmo assim
