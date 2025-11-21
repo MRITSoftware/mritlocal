@@ -44,10 +44,17 @@ jobs:
         echo "ANDROID_HOME: $ANDROID_HOME"
         echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
         
-        # Aceita licenças do Android SDK se o sdkmanager estiver disponível
-        if command -v sdkmanager &> /dev/null; then
-          echo "Aceitando licenças do Android SDK..."
-          yes | sdkmanager --licenses || true
+        # Aceita licenças do Android SDK antes do build
+        # Cria arquivo de licenças aceitas
+        mkdir -p ~/.android
+        echo "24333f8a63b6825ea9c5514f83c2829b1d24e05b" > ~/.android/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license 2>/dev/null || true
+        
+        # Tenta aceitar via sdkmanager também
+        SDK_PATH="$HOME/.buildozer/android/platform/android-sdk"
+        if [ -d "$SDK_PATH" ] && [ -f "$SDK_PATH/tools/bin/sdkmanager" ]; then
+          echo "Aceitando licenças do Android SDK via sdkmanager..."
+          yes | "$SDK_PATH/tools/bin/sdkmanager" --sdk_root="$SDK_PATH" --licenses || true
         fi
         
         # Configura variáveis de ambiente para o build
@@ -56,11 +63,11 @@ jobs:
         echo "Autoconf version: $AUTOCONF_VERSION"
         echo "Automake version: $AUTOMAKE_VERSION"
         
-        # Executa buildozer diretamente
+        # Executa buildozer com yes para aceitar qualquer prompt
         # O buildozer.spec já tem android.accept_sdk_license = True
         # Usa timeout para evitar travamentos
         set +e
-        timeout 10800 buildozer android debug 2>&1 | tee build.log
+        yes | timeout 10800 buildozer android debug 2>&1 | tee build.log
         BUILD_EXIT_CODE=${PIPESTATUS[0]}
         set -e
         
