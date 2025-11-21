@@ -1,0 +1,30 @@
+# Buildozer
+.bin/
+.buildozer/
+*.apk
+*.aab
+*.apks
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Config local
+local_config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
