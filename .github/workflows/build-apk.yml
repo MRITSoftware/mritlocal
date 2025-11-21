@@ -28,16 +28,17 @@ jobs:
       run: |
         pip install buildozer cython
     
-    - name: Accept Android SDK licenses
-      run: |
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        yes | sdkmanager --licenses || true
-    
     - name: Build APK
       env:
+        ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
         ANDROID_LICENSE_ACCEPTANCE: "yes"
       run: |
+        # Cria diretório para licenças aceitas
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+        # Aceita licenças via variável de ambiente (Buildozer vai usar)
+        export ANDROID_LICENSE_ACCEPTANCE=yes
         buildozer android debug
     
     - name: Upload APK
