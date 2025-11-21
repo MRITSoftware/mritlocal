@@ -22,7 +22,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
+        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev expect
     
     - name: Install Buildozer and dependencies
       run: |
@@ -39,14 +39,30 @@ jobs:
         echo "Python version: $(python --version)"
         echo "Buildozer version: $(buildozer --version || echo 'não disponível')"
         
-        # Executa buildozer com logging detalhado
-        # Usa expect ou yes para aceitar licenças automaticamente
-        buildozer android debug 2>&1 | tee build.log || {
+        # Cria script expect para aceitar licenças automaticamente
+        cat > accept_licenses.exp << 'EOF'
+#!/usr/bin/expect -f
+set timeout 300
+spawn buildozer android debug
+expect {
+    "*license*" { send "y\r"; exp_continue }
+    "*License*" { send "y\r"; exp_continue }
+    "*accept*" { send "y\r"; exp_continue }
+    "*Accept*" { send "y\r"; exp_continue }
+    eof
+}
+EOF
+        chmod +x accept_licenses.exp
+        
+        # Executa buildozer com expect para aceitar licenças
+        ./accept_licenses.exp 2>&1 | tee build.log || {
           echo "=== Build falhou ==="
           echo "Últimas 200 linhas do log:"
           tail -200 build.log
           echo "=== Verificando arquivos gerados ==="
           find .buildozer -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
+          echo "=== Tentando build direto (sem expect) ==="
+          buildozer android debug 2>&1 | tail -50
           echo "=== Fim do log ==="
           exit 1
         }
