@@ -56,11 +56,24 @@ jobs:
         echo "Autoconf version: $AUTOCONF_VERSION"
         echo "Automake version: $AUTOMAKE_VERSION"
         
-        # Executa buildozer diretamente (aceita licenças via buildozer.spec)
-        # Usa yes para aceitar qualquer prompt que aparecer
+        # Executa buildozer diretamente
+        # Aceita licenças via variável de ambiente e buildozer.spec
         set +e
-        yes | buildozer android debug 2>&1 | tee build.log
-        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        buildozer android debug 2>&1 | tee build.log &
+        BUILD_PID=$!
+        
+        # Monitora o processo e mostra progresso
+        while kill -0 $BUILD_PID 2>/dev/null; do
+          sleep 30
+          echo "Build ainda rodando... ($(date))"
+          # Verifica se há algum APK gerado
+          if find .buildozer bin -name "*.apk" 2>/dev/null | grep -q .; then
+            echo "✅ APK encontrado durante o build!"
+          fi
+        done
+        
+        wait $BUILD_PID
+        BUILD_EXIT_CODE=$?
         set -e
         
         # Verifica se o build realmente falhou ou se apenas teve warnings
