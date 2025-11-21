@@ -41,29 +41,32 @@ jobs:
         
         # Cria script expect para aceitar licenças automaticamente
         printf '#!/usr/bin/expect -f\n' > accept_licenses.exp
-        printf 'set timeout 300\n' >> accept_licenses.exp
+        printf 'set timeout 3600\n' >> accept_licenses.exp
         printf 'spawn buildozer android debug\n' >> accept_licenses.exp
         printf 'expect {\n' >> accept_licenses.exp
         printf '    "*license*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
         printf '    "*License*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
         printf '    "*accept*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
         printf '    "*Accept*" { send "y\\r"; exp_continue }\n' >> accept_licenses.exp
-        printf '    eof\n' >> accept_licenses.exp
+        printf '    timeout { puts "Timeout!"; exit 1 }\n' >> accept_licenses.exp
+        printf '    eof { catch wait result; exit [lindex $result 3] }\n' >> accept_licenses.exp
         printf '}\n' >> accept_licenses.exp
         chmod +x accept_licenses.exp
         
         # Executa buildozer com expect para aceitar licenças
-        ./accept_licenses.exp 2>&1 | tee build.log || {
-          echo "=== Build falhou ==="
+        set +e
+        ./accept_licenses.exp 2>&1 | tee build.log
+        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        set -e
+        
+        if [ $BUILD_EXIT_CODE -ne 0 ]; then
+          echo "=== Build falhou (código: $BUILD_EXIT_CODE) ==="
           echo "Últimas 200 linhas do log:"
           tail -200 build.log
           echo "=== Verificando arquivos gerados ==="
           find .buildozer -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
-          echo "=== Tentando build direto (sem expect) ==="
-          buildozer android debug 2>&1 | tail -50
-          echo "=== Fim do log ==="
           exit 1
-        }
+        fi
         
         echo "=== Build concluído com sucesso ==="
         echo "Procurando APKs gerados..."
