@@ -28,36 +28,32 @@ jobs:
       run: |
         pip install buildozer cython
     
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-    
-    - name: Accept Android SDK licenses
-      run: |
-        yes | sdkmanager --licenses || true
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-    
     - name: Build APK
       timeout-minutes: 60
-      env:
-        ANDROID_HOME: ${{ env.ANDROID_HOME }}
-        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
       run: |
+        # Prepara diretórios para licenças
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+        
         echo "Iniciando build do APK..."
-        echo "ANDROID_HOME: $ANDROID_HOME"
-        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "Python version: $(python --version)"
+        echo "Buildozer version: $(buildozer --version || echo 'não disponível')"
         
         # Executa buildozer com logging detalhado
+        # Usa expect ou yes para aceitar licenças automaticamente
         buildozer android debug 2>&1 | tee build.log || {
           echo "=== Build falhou ==="
-          echo "Últimas 100 linhas do log:"
-          tail -100 build.log
+          echo "Últimas 200 linhas do log:"
+          tail -200 build.log
+          echo "=== Verificando arquivos gerados ==="
+          find .buildozer -name "*.apk" 2>/dev/null || echo "Nenhum APK encontrado"
           echo "=== Fim do log ==="
           exit 1
         }
         
         echo "=== Build concluído com sucesso ==="
-        ls -la .buildozer/android/platform/build/dists/mritgateway/bin/ || true
+        echo "APKs gerados:"
+        find .buildozer -name "*.apk" -exec ls -lh {} \;
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
