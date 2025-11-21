@@ -98,7 +98,10 @@ jobs:
         echo "JAVA_HOME: $JAVA_HOME"
         
         echo "=== Limpando builds anteriores ==="
-        buildozer android clean || true
+        # Só limpa se o diretório existir para evitar erros
+        if [ -d ".buildozer/android/platform/python-for-android" ]; then
+          buildozer android clean || true
+        fi
         
         echo "=== Preparando ambiente Android SDK ==="
         # Cria diretório do SDK se não existir
@@ -107,11 +110,41 @@ jobs:
         # Copia licenças para o diretório do SDK também
         cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
         
+        # Instala cmdline-tools se não existir (necessário para versões recentes do buildozer)
+        if [ ! -f "$SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
+          echo "=== Instalando Android SDK cmdline-tools ==="
+          mkdir -p "$SDK_PATH/cmdline-tools"
+          cd "$SDK_PATH"
+          # Tenta baixar a versão mais recente do cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip || \
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip || true
+          if [ -f cmdline-tools.zip ]; then
+            unzip -q cmdline-tools.zip -d cmdline-tools-temp
+            rm cmdline-tools.zip
+            # Move para a estrutura esperada (cmdline-tools/latest/)
+            if [ -d cmdline-tools-temp/cmdline-tools ]; then
+              mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/ 2>/dev/null || true
+            else
+              mkdir -p cmdline-tools/latest
+              mv cmdline-tools-temp/* cmdline-tools/latest/ 2>/dev/null || true
+            fi
+            rm -rf cmdline-tools-temp
+          fi
+          cd - > /dev/null
+        fi
+        
+        echo "=== Aceitando licenças do SDK ==="
+        # Tenta aceitar licenças antes do build usando sdkmanager se disponível
+        CMDLINE_TOOLS="$SDK_PATH/cmdline-tools/latest/bin/sdkmanager"
+        if [ -f "$CMDLINE_TOOLS" ]; then
+          echo "Aceitando licenças via sdkmanager..."
+          yes | "$CMDLINE_TOOLS" --licenses 2>&1 | head -50 || true
+        fi
+        
         echo "=== Iniciando build ==="
-        # Aceita licenças automaticamente durante o build usando yes
-        # O buildozer vai baixar o SDK e pedir confirmação de licenças
-        # Usamos yes para responder automaticamente "y" a todas as perguntas
-        yes | buildozer -v android debug 2>&1 | tee build.log || {
+        # O buildozer.spec já tem android.accept_sdk_license = True
+        # Executa o build e captura a saída
+        buildozer -v android debug 2>&1 | tee build.log || {
           # Se falhar, tenta aceitar licenças e tentar novamente
           if [ -d "$SDK_PATH/cmdline-tools" ]; then
             echo "=== Tentando aceitar licenças após falha ==="
@@ -120,7 +153,7 @@ jobs:
               yes | "$CMDLINE_TOOLS" --licenses 2>&1 || true
               cp -r ~/.android/licenses/* "$SDK_PATH/licenses/" 2>/dev/null || true
               echo "=== Tentando build novamente ==="
-              yes | buildozer -v android debug 2>&1 | tee build-retry.log || {
+              buildozer -v android debug 2>&1 | tee build-retry.log || {
                 EXIT_CODE=$?
                 echo "=== Build falhou novamente com código: $EXIT_CODE ==="
                 
